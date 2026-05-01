@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=5.0, user-scalable=yes">
     <title>譜面大会成績管理シート Pro</title>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
             --excel-green: #217346;
@@ -58,7 +59,7 @@
         .col-score { width: 85px; }
         .col-rate { width: 95px; }
 
-        .entry-table input { 
+        .entry-table input[type="text"], .entry-table input[type="number"] { 
             width: 100%; border: none; outline: none; padding: 6px 4px; 
             background: transparent; font-size: 16px;
             box-sizing: border-box;
@@ -71,7 +72,6 @@
 
         .add-btn { background: var(--excel-green); color: white; border: none; padding: 12px; cursor: pointer; border-radius: 2px; margin-top: 15px; width: 100%; font-weight: bold; font-size: 15px; }
 
-        /* 順位の発光演出 */
         .rank-gold { color: var(--gold) !important; font-weight: bold; text-shadow: 0 0 8px rgba(212, 175, 55, 0.6); }
         .rank-silver { color: var(--silver) !important; font-weight: bold; text-shadow: 0 0 8px rgba(169, 169, 169, 0.6); }
         .rank-bronze { color: var(--bronze) !important; font-weight: bold; text-shadow: 0 0 8px rgba(184, 115, 51, 0.6); }
@@ -80,15 +80,12 @@
         .best-label { font-size: 9px; font-weight: bold; color: #555; line-height: 1; margin-bottom: 2px; text-transform: uppercase; }
         .rate-value { font-size: 14px; font-weight: bold; }
 
-        /* ダッシュボードレイアウト */
         .dashboard-container { display: flex; flex-direction: column; gap: 1px; background: var(--border-color); border: 2px solid var(--border-color); margin-bottom: 25px; border-radius: 4px; overflow: hidden; }
-        
         .dash-row-top { display: flex; background: white; }
         .total-rate-box { flex: 1.5; padding: 20px; border-right: 1px solid var(--border-color); display: flex; flex-direction: column; justify-content: center; background: linear-gradient(135deg, #fffcf0 0%, #fff4cc 100%); }
         .meta-box { flex: 1; display: flex; flex-direction: column; background: #fcfcfc; }
         .meta-item { flex: 1; padding: 10px 20px; display: flex; flex-direction: column; justify-content: center; border-bottom: 1px solid var(--border-color); }
         .meta-item:last-child { border-bottom: none; }
-
         .dash-row-bottom { display: flex; background: white; border-top: 2px solid var(--border-color); }
         .bottom-item { flex: 1; padding: 15px 20px; border-right: 1px solid var(--border-color); background: #fdfdfd; text-align: center; }
         .bottom-item:last-child { border-right: none; }
@@ -104,19 +101,23 @@
         .score-main { font-weight: bold; font-size: 14px; line-height: 1.4; } 
         .score-avg { font-size: 10px; color: #999; margin-top: -1px; line-height: 1; } 
 
-        /* ランキング表内の調整 */
         .top10-song { font-size: 11px !important; word-break: break-all; padding: 8px !important; color: #475569; }
         .top10-stats { font-size: 11px !important; color: #64748b; text-align: center; }
         .top10-rate { font-size: 18px !important; font-weight: 800; text-align: right; padding: 8px !important; font-family: 'Consolas', monospace; }
 
         .winner-row { background-color: #ffffff !important; }
+        .excluded-row { background-color: #f0f0f0 !important; color: #888; }
+
+        /* グラフエリア調整 */
+        .chart-container { margin-top: 20px; padding: 10px; border: 1px solid var(--border-color); background: white; border-radius: 4px; height: 220px; position: relative; }
+        .chart-controls { margin-bottom: 5px; display: flex; gap: 5px; align-items: center; }
+        .chart-btn { font-size: 11px; padding: 3px 8px; cursor: pointer; border: 1px solid var(--border-color); background: #eee; }
+        .chart-btn.active { background: var(--excel-green); color: white; border-color: var(--excel-green); }
 
         @media (max-width: 480px) {
             .container { margin: 5px; padding: 8px; }
             .stat-value.large { font-size: 28px; }
-            /* 縦画面時にダッシュボードランキングを見やすく */
-            .ranking-container .table-wrapper table { min-width: 100%; }
-            .top10-rate { font-size: 16px !important; }
+            .chart-container { height: 180px; }
         }
     </style>
 </head>
@@ -143,7 +144,7 @@
                         <th class="col-rank">譜面数</th>
                         <th class="col-score">点数</th>
                         <th class="col-score">平均点</th>
-                        <th style="width: 50px;">操作</th>
+                        <th style="width: 70px;">除外 / 削除</th>
                     </tr>
                 </thead>
                 <tbody id="entryBody"></tbody>
@@ -178,7 +179,7 @@
         <div class="dashboard-container">
             <div class="dash-row-top">
                 <div class="total-rate-box">
-                    <div class="stat-label">総合レート (Best 10 Avg)</div>
+                    <div class="stat-label">総合レート</div>
                     <div id="dTotalRate" class="stat-value large">0.00</div>
                 </div>
                 <div class="meta-box">
@@ -198,11 +199,11 @@
                     <div id="dAvgOver" class="stat-value">0%</div>
                 </div>
                 <div class="bottom-item">
-                    <div class="stat-label">Top 10率 (10位以内)</div>
+                    <div class="stat-label">Top 10率</div>
                     <div id="dTop10Rate" class="stat-value">0%</div>
                 </div>
                 <div class="bottom-item">
-                    <div class="stat-label">Top 3率 (3位以内)</div>
+                    <div class="stat-label">Top 3率</div>
                     <div id="dTop3Rate" class="stat-value">0%</div>
                 </div>
             </div>
@@ -219,11 +220,27 @@
                 </table>
             </div>
         </div>
+
+        <div class="chart-container">
+            <div class="chart-controls">
+                <span class="stat-label">表示件数:</span>
+                <button class="chart-btn" onclick="setChartRange(5)">5</button>
+                <button class="chart-btn" onclick="setChartRange(10)">10</button>
+                <button class="chart-btn" onclick="setChartRange(20)">20</button>
+                <button class="chart-btn active" onclick="setChartRange(0)">すべて</button>
+            </div>
+            <!-- canvasの親要素の高さを固定して、Chart.jsのバグを防ぐ -->
+            <div style="height: calc(100% - 30px); width: 100%;">
+                <canvas id="rateChart"></canvas>
+            </div>
+        </div>
     </div>
 </div>
 
 <script>
-    let records = JSON.parse(localStorage.getItem('sheetRecordsProV5') || '[]');
+    let records = JSON.parse(localStorage.getItem('sheetRecordsProV6') || '[]');
+    let chartInstance = null;
+    let chartRange = 0;
 
     const el = document.getElementById('entryBody');
     const sortable = Sortable.create(el, {
@@ -253,6 +270,7 @@
     }
 
     function calculateRate(r) {
+        if (r.exclude) return 0;
         const rank = parseInt(r.rank) || 0;
         const total = parseInt(r.total) || 1;
         const score = parseFloat(r.score) || 0;
@@ -286,11 +304,11 @@
     }
 
     function save() {
-        localStorage.setItem('sheetRecordsProV5', JSON.stringify(records));
+        localStorage.setItem('sheetRecordsProV6', JSON.stringify(records));
     }
 
     function addNewRow() {
-        records.push({ id: Date.now(), comp: '', song: '', rank: '', total: '', score: '', avg: '' });
+        records.push({ id: Date.now(), comp: '', song: '', rank: '', total: '', score: '', avg: '', exclude: false });
         save();
         render();
     }
@@ -300,6 +318,7 @@
         if (index !== -1) {
             records[index][field] = value;
             save();
+            if (field === 'exclude') render();
         }
     }
 
@@ -309,6 +328,69 @@
             save();
             render();
         }
+    }
+
+    function setChartRange(range) {
+        chartRange = range;
+        const btns = document.querySelectorAll('.chart-btn');
+        btns.forEach(btn => {
+            const val = parseInt(btn.innerText);
+            btn.classList.toggle('active', val === range || (btn.innerText === 'すべて' && range === 0));
+        });
+        renderChart();
+    }
+
+    function renderChart() {
+        const ctx = document.getElementById('rateChart').getContext('2d');
+        const validRates = records.filter(r => !r.exclude && parseInt(r.rank) > 0).map(r => ({
+            label: r.song || 'Untitled',
+            rate: calculateRate(r)
+        }));
+
+        let displayData = validRates;
+        if (chartRange > 0) displayData = validRates.slice(-chartRange);
+
+        if (chartInstance) chartInstance.destroy();
+
+        // Y軸の自動調整ロジック
+        const rates = displayData.map(d => d.rate);
+        const minRate = rates.length ? Math.min(...rates) : 50;
+        const maxRate = rates.length ? Math.max(...rates) : 200;
+        
+        chartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: displayData.map(d => d.label),
+                datasets: [{
+                    data: rates,
+                    borderColor: '#217346',
+                    backgroundColor: 'rgba(33, 115, 70, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.2,
+                    pointRadius: 3
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        // データの範囲に合わせて上下にバッファを持たせる
+                        suggestedMin: Math.floor(minRate - 10),
+                        suggestedMax: Math.ceil(maxRate + 10),
+                        ticks: { font: { size: 10 } }
+                    },
+                    x: {
+                        ticks: { display: false } // X軸のラベルは混雑するので非表示
+                    }
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { enabled: true }
+                }
+            }
+        });
     }
 
     function render() {
@@ -321,7 +403,7 @@
         top10Body.innerHTML = "";
 
         const processed = records.map(r => ({ ...r, rate: calculateRate(r) }));
-        const top10 = [...processed].filter(r => r.rate > 0).sort((a, b) => b.rate - a.rate).slice(0, 10);
+        const top10 = [...processed].filter(r => r.rate > 0 && !r.exclude).sort((a, b) => b.rate - a.rate).slice(0, 10);
 
         records.forEach((r, i) => {
             const tr = document.createElement('tr');
@@ -335,7 +417,10 @@
                 <td><input type="number" value="${r.total}" oninput="updateField(${r.id}, 'total', this.value)"></td>
                 <td><input type="number" step="0.1" value="${r.score}" oninput="updateField(${r.id}, 'score', this.value)"></td>
                 <td><input type="number" step="0.1" value="${r.avg}" oninput="updateField(${r.id}, 'avg', this.value)"></td>
-                <td style="text-align:center;"><button onclick="deleteRow(${r.id})" style="color:red; border:none; background:none; cursor:pointer;">×</button></td>
+                <td style="text-align:center;">
+                    <input type="checkbox" ${r.exclude ? 'checked' : ''} onchange="updateField(${r.id}, 'exclude', this.checked)">
+                    <button onclick="deleteRow(${r.id})" style="color:red; border:none; background:none; cursor:pointer; margin-left:8px;">×</button>
+                </td>
             `;
             entryBody.appendChild(tr);
         });
@@ -350,6 +435,7 @@
             
             const tr = document.createElement('tr');
             if (rank === 1) tr.className = "winner-row";
+            if (r.exclude) tr.classList.add('excluded-row');
 
             tr.innerHTML = `
                 <td style="text-align:center;">${i + 1}</td>
@@ -366,14 +452,14 @@
                 <td style="text-align:right; color: ${getRateColor(r.rate)}">
                     <div class="rate-cell-content">
                         ${isWinner ? '<span class="best-label">Best</span>' : ''}
-                        <span class="rate-value">${r.rate.toFixed(2)}</span>
+                        <span class="rate-value">${r.rate > 0 ? r.rate.toFixed(2) : '---'}</span>
                     </div>
                 </td>
             `;
             resultBody.appendChild(tr);
         });
 
-        const validRecords = processed.filter(r => parseInt(r.rank) > 0);
+        const validRecords = processed.filter(r => parseInt(r.rank) > 0 && !r.exclude);
         const count = validRecords.length;
         let avgOver = 0, t10c = 0, t3c = 0, rankSum = 0;
         
@@ -395,15 +481,13 @@
         document.getElementById('dAvgRank').innerText = count ? (rankSum/count).toFixed(1) : "0.0";
 
         top10.forEach((r, i) => {
-            const rankClass = getRankClass(parseInt(r.rank));
-            top10Body.innerHTML += `
-                <tr>
-                    <td style="text-align:center; font-weight:bold; color:#64748b;">${i+1}</td>
-                    <td class="top10-song">${r.song}</td>
-                    <td class="top10-stats ${rankClass}">${r.rank}/${r.total}</td>
-                    <td class="top10-rate" style="color: ${getRateColor(r.rate)};">${r.rate.toFixed(2)}</td>
-                </tr>`;
+            const rc = getRankClass(parseInt(r.rank));
+            top10Body.innerHTML += `<tr><td style="text-align:center; font-weight:bold; color:#64748b;">${i+1}</td><td class="top10-song">${r.song}</td><td class="top10-stats ${rc}">${r.rank}/${r.total}</td><td class="top10-rate" style="color: ${getRateColor(r.rate)};">${r.rate.toFixed(2)}</td></tr>`;
         });
+        
+        if (document.getElementById('dashboard').classList.contains('active')) {
+            renderChart();
+        }
     }
 
     if (records.length === 0) addNewRow();
